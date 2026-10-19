@@ -70,7 +70,23 @@ jobs:
             echo "FATAL: 请在 Settings -> Environments -> sign-gate 下配置上述 secret（不要放仓库级 Secrets）"
             exit 1
           fi
-          echo "secret 齐备（未打印任何值）"
+          # 粘贴事故最常见：带进空格/提示符/被截断。这里先验，别等到签名步才炸。
+          SAN=$(printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n\t')
+          if ! printf '%s' "$SAN" | base64 -d > /tmp/ks-probe 2>/dev/null; then
+            echo "FATAL: KEYSTORE_B64 不是合法 base64（粘贴时多半带进了空格/提示符残留，或被截断）"
+            echo "       重新生成并在网页覆盖： base64 -w0 ~/opt/keystores/easytier-sfa.keystore"
+            exit 1
+          fi
+          SZ=$(stat -c%s /tmp/ks-probe)
+          MAGIC=$(od -An -tx1 -N2 /tmp/ks-probe | tr -d ' ')
+          rm -f /tmp/ks-probe
+          echo "KEYSTORE_B64 解码 OK：$SZ 字节，头部 $MAGIC（feed=JKS，30=PKCS12）"
+          if [ "$SZ" -lt 1000 ]; then echo "FATAL: 解出的 keystore 过小（$SZ B），必定是截断"; exit 1; fi
+          case "$MAGIC" in
+            feed*|30*) : ;;
+            *) echo "FATAL: 头部不是 keystore 特征（feed…/30…），贴错内容了"; exit 1 ;;
+          esac
+          echo "secret 齐备且 keystore 形态正确（未打印任何值）"
 
       - name: 取本次 run 的未签名产物
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
@@ -92,7 +108,7 @@ jobs:
           [ -n "$APK" ] || { echo "FATAL: 未找到 arm64 未签名 APK"; find in -type f; exit 1; }
           KS=$(mktemp /tmp/rs-XXXX.keystore)
           trap 'rm -f "$KS"' EXIT
-          printf '%s' "$KEYSTORE_B64" | base64 -d > "$KS"
+          printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n\t' | base64 -d > "$KS"
           chmod 600 "$KS"
           "$BT/zipalign" -f 4 "$APK" aligned.apk
           "$BT/apksigner" sign --ks "$KS" --ks-key-alias "$ALIAS_NAME" \
