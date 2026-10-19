@@ -5,6 +5,7 @@ name: regression
 # 而不是等到打 APK 或装到手机上。只在 sing-box/ 有改动时跑。
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -47,4 +48,4 @@ jobs:
         run: go vet -tags "with_easytier,with_quic,with_wireguard,with_utls,with_clash_api" ./protocol/easytier/... ./option/... ./include/...
 
       - name: 单测（lazy / cache_runtime 默认语义 + config_toml 互斥守卫）
-        run: go test -count=1 -tags "with_easytier,with_quic,with_wireguard,with_utls,with_clash_api" -run EasyTier ./option/... ./protocol/easytier/...
+        run: go test -count=1 -v -tags "with_easytier,with_quic,with_wireguard,with_utls,with_clash_api" -run EasyTier ./option/... ./protocol/easytier/...
