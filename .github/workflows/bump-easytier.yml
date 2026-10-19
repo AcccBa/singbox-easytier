@@ -92,33 +92,48 @@ jobs:
           fi
 
       - name: 推分支并开 PR
-        if: steps.diff.outputs.changed == '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           SHORT=$(printf '%s' "$ET_TARGET" | cut -c1-10)
           BRANCH="bump/easytier-${SHORT}"
+          # 幂等：bump 分支由本 job 独占生成、从不手工编辑 ⇒ 已存在就覆盖复用，不新建带后缀的分支堆垃圾
           if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-            echo "FATAL: 远端已存在 $BRANCH，先处理旧 PR 再 bump"; exit 1
+            echo "既有分支 $BRANCH ⇒ 复用并强推覆盖"
+            PUSH="git push -f -q origin $BRANCH"
+          else
+            PUSH="git push -q origin $BRANCH"
           fi
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
           git add sing-box/go.mod sing-box/go.sum
           git commit -s -m "deps(easytier): bump easytier-go to ${ET_TARGET}" -m "由 bump-easytier.yml 生成（run ${GITHUB_RUN_ID}）。go.mod 之前：$(cat /tmp/pin_before)"
-          git push -q origin "$BRANCH"
+          eval "$PUSH"
           {
-            echo "自动 bump：\`$(cat /tmp/pin_before)\` → \`${MODULE} ${ET_TARGET}}\`。"
+            echo "自动 bump：\`$(cat /tmp/pin_before)\` → \`${MODULE} ${ET_TARGET}\`。"
             echo
             echo "- go.sum 由 \`go mod tidy\` 重算，\`go mod verify\` 通过"
             echo "- 预编译 wasm 内核已确认随模块在位（无需 Rust 工具链）"
-            echo "- 下一步验收：同分支上的 regression 必须绿（本 job 已显式触发；PR 不会自动跑，因为 GITHUB_TOKEN 防递归）"
+            echo "- 验收：同分支上的 regression 必须绿（本 job 已显式触发；GITHUB_TOKEN 开的 PR 不会自动跑 workflow）"
             echo "- 合并后仍需人手动 \`release.yml\` 才会出新 APK"
           } > /tmp/pr.md
-          gh pr create --base main --head "$BRANCH" \
-            --title "deps(easytier): bump to ${SHORT}" --body-file /tmp/pr.md
-          echo "PR 分支：$BRANCH"
+          TITLE="deps(easytier): bump to ${SHORT}"
+          OPEN=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$OPEN" ]; then echo "已有开放 PR #$OPEN，跳过创建"; exit 0; fi
+          if ! gh pr create --base main --head "$BRANCH" --title "$TITLE" --body-file /tmp/pr.md; then
+            echo "gh pr create 失败，改走 REST 兜底"
+            PR_URL=$(gh api -X POST "repos/${GITHUB_REPOSITORY}/pulls" \
+                       -f title="$TITLE" -f head="$BRANCH" -f base=main \
+                       -f body="$(cat /tmp/pr.md)" --jq .html_url) || {
+              echo "FATAL: 两种方式都不能自动开 PR。"
+              echo "       手动开： https://github.com/${GITHUB_REPOSITORY}/compare/${BRANCH}?expand=1"
+              echo "       分支与提交已在远端，回归门也已触发，不必重跑本 job。"
+              exit 1
+            }
+            echo "PR 已建（REST）：$PR_URL"
+          fi
 
       - name: 在该分支上触发回归门（PR 的验收）
         if: steps.diff.outputs.changed == '1'
