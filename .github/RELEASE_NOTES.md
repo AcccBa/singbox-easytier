@@ -11,8 +11,9 @@ reF1nd or EasyTier — see [NOTICE](https://github.com/AcccBa/singbox-easytier/b
 `SFA-<version>-arm64-v8a-signed.apk` — release build, minified, signed with the
 project key, `arm64-v8a` only.
 
-Install over a previous build from this project is supported (same signing
-certificate), so an existing overlay session does not have to be torn down.
+Upgrading in place over an earlier build signed with the same certificate does
+not require an uninstall: app data and mesh configuration are kept. The VPN
+connection itself does re-establish, because upgrading restarts the process.
 
 ## Verify before installing
 
