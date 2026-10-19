@@ -154,20 +154,26 @@ jobs:
           VER=$(grep -m1 '^VERSION_NAME=' sfa/version.properties | cut -d= -f2)
           TAG="v${VER}-ci$RUN_ID"
           {
-            echo "构建与签名同一次 run：$RUN_ID（https://github.com/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID）"
+            cat .github/RELEASE_NOTES.md
             echo
-            echo "签名证书 SHA-256：$EXPECTED_CERT_SHA256"
+            echo '---'
             echo
-            echo "校验值（sha256）："
+            echo '### Build identity'
+            echo
+            echo '| Item | Value |'
+            echo '| --- | --- |'
+            echo "| Version | \`$VER\` |"
+            echo "| Source commit | \`$GITHUB_SHA\` |"
+            echo "| Workflow run | [$RUN_ID](https://github.com/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID) |"
+            echo "| Signing certificate (SHA-256) | \`$EXPECTED_CERT_SHA256\` |"
+            echo
+            echo '### Checksums (sha256)'
             echo
             echo '```'
             cat out/SHA256SUMS
             echo '```'
-            echo
-            echo "注：同一哈希另记在 CI 无写权限的仓库（home-mesh 文档），两处不一致即为篡改信号。"
-            echo "验签：apksigner verify --print-certs <apk> 应输出上面的证书指纹。"
-          } > notes.md
-          ARGS=(--target "$GITHUB_SHA" --title "SFA $VER (CI $RUN_ID)" --notes-file notes.md)
+          } > release-notes.md
+          ARGS=(--target "$GITHUB_SHA" --title "SFA $VER — embedded EasyTier core" --notes-file release-notes.md)
           if [ "$PRERELEASE" = "true" ]; then ARGS+=(--prerelease); fi
           gh release create "$TAG" out/*-signed.apk out/SHA256SUMS "${ARGS[@]}" || { echo "FATAL: 发布失败"; exit 1; }
           echo "已发布 tag=$TAG"
