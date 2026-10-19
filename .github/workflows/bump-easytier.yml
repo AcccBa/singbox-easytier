@@ -102,7 +102,7 @@ jobs:
           git commit -s -m "deps(easytier): bump easytier-go to ${ET_TARGET}" -m "由 bump-easytier.yml 生成（run ${GITHUB_RUN_ID}）。go.mod 之前：$(cat /tmp/pin_before)"
           git push -q origin "$BRANCH"
           {
-            echo "自动 bump：\`$(cat /tmp/pin_before)\` → \`${MODULE} ${target}\`。"
+            echo "自动 bump：\`$(cat /tmp/pin_before)\` → \`${MODULE} ${ET_TARGET}}\`。"
             echo
             echo "- go.sum 由 \`go mod tidy\` 重算，\`go mod verify\` 通过"
             echo "- 预编译 wasm 内核已确认随模块在位（无需 Rust 工具链）"
