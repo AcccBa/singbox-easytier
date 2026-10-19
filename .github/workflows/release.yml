@@ -1,28 +1,22 @@
 name: release
 
-# 一次 run 内完成：构建（复用 apk.yml，该 job 读不到密钥）-> 签名（密钥只在 environment: sign-gate 的 job 可见）
-# -> 证书指纹强制校验 -> SLSA 构建证明 -> 发布 prerelease。
-# 信任边界：
-#   * 所有 action 钉完整 commit SHA（防第三方 action 换标签投毒）。
-#   * 密钥只挂在 environment sign-gate；build job 不声明该环境，读不到密钥。
-#   * 签名后 apksigner 验证证书 SHA-256 必须等于手机已信任指纹，不符即拒绝发布。
-#   * 只由人手动 dispatch，不接 pull_request_target / workflow_run。
-#   * 发布后哈希另记到 CI 写不到的仓库（home-mesh 文档），构成独立核对渠道。
+# 所有 action 钉**完整 commit SHA**（防第三方换版本标签投毒）。SHA 于 2026-10-19 由 tag 解引用取得。
+# 一次 run 内：构建（复用 apk.yml，该 job 读不到密钥）-> 签名（密钥只在 environment: sign-gate 可见）
+# -> 证书指纹强制校验 -> SLSA 证明 -> 发布 prerelease。
+# 信任边界：密钥只挂 environment；签名后证书 SHA-256 必须等于手机已信任指纹，不符即拒发；
+# 只由人手动 dispatch；发布哈希另记在 CI 无写权限的仓（home-mesh 文档）。
 
 on:
   workflow_dispatch:
     inputs:
-      singbox_ref:
-        description: "sing-box fork 的分支 / ref"
-        default: feat/easytier-r1t
       prerelease:
         description: "标记为预发布"
         type: boolean
         default: true
       attest:
-        description: "生成 SLSA 构建证明（个人账号私有仓不可用，需先把仓库设为 public）"
+        description: "生成 SLSA 构建证明（需 public 仓）"
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -33,12 +27,9 @@ concurrency:
 
 jobs:
   build:
-    # 复用同一条构建链：产物落在同一次 run，签名 job 直接取（跨 run 取产物实测不稳）
     permissions:
       contents: read
     uses: ./.github/workflows/apk.yml
-    with:
-      singbox_ref: ${{ inputs.singbox_ref || 'feat/easytier-r1t' }}
 
   sign:
     needs: build
@@ -64,7 +55,7 @@ jobs:
         with:
           packages: "build-tools;37.0.0"
 
-      - name: 前置检查：签名所需 secret 必须齐（缺失就明确报错，不静默）
+      - name: 前置检查：签名所需 secret 必须齐（缺失明确报错，不静默）
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
@@ -76,7 +67,7 @@ jobs:
             if [ -z "${!v}" ]; then echo "缺少 $v"; missing=1; fi
           done
           if [ "$missing" = 1 ]; then
-            echo "FATAL: 请在 Settings -> Environments -> sign-gate 下配置上述 secret"
+            echo "FATAL: 请在 Settings -> Environments -> sign-gate 下配置上述 secret（不要放仓库级 Secrets）"
             exit 1
           fi
           echo "secret 齐备（未打印任何值）"
@@ -114,11 +105,11 @@ jobs:
             exit 1
           fi
           mkdir -p out
-          BASE=$(basename "${APK%.apk}"); BASE="${BASE%-unsigned}"   # 去掉输入自带的 -unsigned，免得产物叫 -unsigned-signed
+          BASE=$(basename "${APK%.apk}"); BASE="${BASE%-unsigned}"
           mv aligned-signed.apk "out/${BASE}-signed.apk"
           ( cd out && sha256sum *-signed.apk > SHA256SUMS && cat SHA256SUMS )
 
-      - name: 已签名产物留档（即使后续步骤失败也不丢）
+      - name: 已签名产物留档（后续步骤失败也不丢）
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
@@ -126,7 +117,7 @@ jobs:
           path: out/
           if-no-files-found: error
 
-      - name: SLSA 构建证明（把发布物与本次 run 绑定）
+      - name: SLSA 构建证明
         if: ${{ inputs.attest }}
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
@@ -139,10 +130,10 @@ jobs:
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           set -euo pipefail
-          VER=$(grep -m1 '^VERSION_NAME=' version.properties | cut -d= -f2)
+          VER=$(grep -m1 '^VERSION_NAME=' sfa/version.properties | cut -d= -f2)
           TAG="v${VER}-ci$RUN_ID"
           {
-            echo "构建与签名在同一次 run：$RUN_ID（https://github.com/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID）"
+            echo "构建与签名同一次 run：$RUN_ID（https://github.com/${GITHUB_REPOSITORY}/actions/runs/$RUN_ID）"
             echo
             echo "签名证书 SHA-256：$EXPECTED_CERT_SHA256"
             echo
@@ -152,11 +143,10 @@ jobs:
             cat out/SHA256SUMS
             echo '```'
             echo
-            echo "注：同一哈希另记在 CI 无写权限的仓库（home-mesh 文档）。两处不一致即为篡改信号。"
+            echo "注：同一哈希另记在 CI 无写权限的仓库（home-mesh 文档），两处不一致即为篡改信号。"
             echo "验签：apksigner verify --print-certs <apk> 应输出上面的证书指纹。"
           } > notes.md
           ARGS=(--target "$GITHUB_SHA" --title "SFA $VER (CI $RUN_ID)" --notes-file notes.md)
-          # 写成 if 只为可读性；实测 set -e 下「[ ] && cmd」在 false 分支同样 rc=0，不是坑
           if [ "$PRERELEASE" = "true" ]; then ARGS+=(--prerelease); fi
           gh release create "$TAG" out/*-signed.apk out/SHA256SUMS "${ARGS[@]}" || { echo "FATAL: 发布失败"; exit 1; }
           echo "已发布 tag=$TAG"

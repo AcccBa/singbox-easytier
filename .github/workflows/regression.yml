@@ -1,31 +1,39 @@
-name: easytier-regression
+name: regression
 
-# 回归门：分支错配（unknown field "providers"）、tag 漏项、lazy/cache_runtime 默认值漂移，
-# 这些都该在 push 时被拦住，而不是等到打 APK 或装到手机上。
+# 所有 action 钉**完整 commit SHA**（防第三方换版本标签投毒）。SHA 于 2026-10-19 由 tag 解引用取得。
+# 回归门：上游字段错配、tag 漏项、lazy/cache_runtime 默认值漂移，都该在 push 时被拦住，
+# 而不是等到打 APK 或装到手机上。只在 sing-box/ 有改动时跑。
 
 on:
   push:
-    branches: [feat/easytier-r1t]
+    branches: [main]
+    paths:
+      - 'sing-box/**'
+      - '.github/workflows/regression.yml'
   pull_request:
+    paths: ['sing-box/**']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: easytier-regression-${{ github.ref }}
+  group: regression-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   gate:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sing-box
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version: "1.27.2"
-          cache: true
+          cache-dependency-path: sing-box/go.sum
 
       - name: 全 tag 构建（本机验证过的同一组 tag）
         run: go build -tags "with_easytier,with_quic,with_wireguard,with_utls,with_clash_api" -o /tmp/sing-box-full ./cmd/sing-box
