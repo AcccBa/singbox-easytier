@@ -35,6 +35,18 @@ jobs:
           go-version: "1.27.2"
           cache-dependency-path: sing-box/go.sum
 
+      - name: 预热依赖（带重试）
+        # 实测 proxy.golang.org 会随机返回 stream INTERNAL_ERROR（不同模块都碰到过），
+        # 冷缓存（改了 go.sum 的 PR 必然冷缓存）时最容易撞。一次网络抖动不该让门禁假红。
+        run: |
+          set -euo pipefail
+          n=0
+          until go mod download; do
+            n=$((n+1))
+            if [ "$n" -ge 3 ]; then echo "FATAL: 依赖下载连续 3 次失败（模块代理持续不可用）"; exit 1; fi
+            echo "go mod download 第 $n 次失败，15s 后重试"; sleep 15
+          done
+
       - name: 全 tag 构建（本机验证过的同一组 tag）
         run: go build -tags "with_easytier,with_quic,with_wireguard,with_utls,with_clash_api" -o /tmp/sing-box-full ./cmd/sing-box
 

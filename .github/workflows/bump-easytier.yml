@@ -135,12 +135,17 @@ jobs:
             echo "PR 已建（REST）：$PR_URL"
           fi
 
-      - name: 在该分支上触发回归门（PR 的验收）
-        if: steps.diff.outputs.changed == '1'
+      - name: 报告 PR 与回归门状态（GITHUB_TOKEN 不能 dispatch，实测 403）
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          BRANCH="bump/easytier-$(printf '%s' "$ET_TARGET" | cut -c1-10)"
-          timeout 60 gh workflow run regression.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-          echo "已触发 regression（ref=$BRANCH）。验收：该 run 绿了才允许合并本 PR。"
+          SHORT=$(printf '%s' "$ET_TARGET" | cut -c1-10)
+          BRANCH="bump/easytier-${SHORT}"
+          PR=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          echo "PR=${PR:-未找到}"
+          echo "回归门由 pull_request 事件自动触发；bot 首次提交的 PR 会停在 action_required（GitHub 默认门禁），需人放行："
+          echo "  1) 找到该 PR 上的 run id： gh run list --repo $GITHUB_REPOSITORY --workflow regression.yml --limit 3"
+          echo "  2) 放行（实测可用；gh 2.46 无 run approve 子命令）："
+          echo "     gh api -X POST repos/$GITHUB_REPOSITORY/actions/runs/<run_id>/approve"
+          echo "  绿了才允许合并本 PR；合并后仍需人手动 release.yml 才出新 APK。"
