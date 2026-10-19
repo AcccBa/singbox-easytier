@@ -60,7 +60,14 @@ jobs:
         working-directory: sing-box
         run: |
           set -euo pipefail
-          go get "${MODULE}@${ET_TARGET}"
+          # 模块代理会抖（实测出现过 proxy.golang.org 的 stream INTERNAL_ERROR），
+          # 一次网络抖动不该让整条 bump 白跑，故有界重试 3 次。
+          n=0
+          until go get "${MODULE}@${ET_TARGET}"; do
+            n=$((n+1))
+            if [ "$n" -ge 3 ]; then echo "FATAL: go get 连续 3 次失败（代理持续抖动或目标不可解析）"; exit 1; fi
+            echo "go get 第 $n 次失败，20s 后重试"; sleep 20
+          done
           go mod tidy
           go mod verify
           echo "--- go.mod 变更（最多 20 行）---"
