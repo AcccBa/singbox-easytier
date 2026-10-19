@@ -23,7 +23,7 @@ type EasyTierOutboundOptions struct {
 	NetworkSecret string `json:"network_secret,omitempty"`
 	// Hostname is advertised to other overlay members.
 	Hostname string `json:"hostname,omitempty"`
-	// IPv4Prefix is this instance's overlay address, e.g. "10.0.0.5/24".
+	// IPv4Prefix is this instance's overlay address, e.g. "10.64.0.5/24".
 	// Empty asks the core to allocate one.
 	IPv4Prefix string `json:"ipv4,omitempty"`
 	// Peers are entry-point URIs, e.g. "udp://198.51.100.10:11010".

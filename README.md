@@ -39,7 +39,7 @@ hop inside the same process", which removes the conflict.
 |---|---|---|
 | `cache_runtime` | `true` | Keeps the wasm runtime warm. Measured on a Linux host: ≈39 MB extra resident, in exchange for removing a ≈266 MB transient peak and a ≈15 s JIT warm-up on every service restart. Set `false` to restore upstream's release-on-stop behaviour. |
 | `lazy` | `false` | **Experimental and unusable on Android.** Start-on-demand needs underlay sockets to be created through the sing-box dialer (so they are `VpnService.protect()`-ed). That SocketFactory path is not implemented; enabling this option on Android self-deadlocks the tunnel at first connect. Desktop only. |
-| `config_toml` | – | Replaces the entire embedded-core configuration. Combining it with the structured fields (`network_name`, `network_key`, `peer`, `ipv4_network`, …) is rejected at compile time, because the structured fields would be silently ignored. |
+| `config_toml` | – | Escape hatch that replaces the entire embedded-core configuration. Combining it with structured fields (`network_name`, `network_secret`, `hostname`, `peers`, `listeners`, `encryption`) is rejected when the outbound is constructed — i.e. at startup, before the core is created — and the error lists the conflicting names, because otherwise the structured fields would be swallowed silently. |
 
 Validated on-device: direct P2P (UDP) link establishment through
 carrier-grade NAT across two different ISPs, 0 % packet loss in steady state.
@@ -67,7 +67,8 @@ gh workflow run release.yml --repo AcccBa/singbox-easytier -f prerelease=true -f
 
 Every push to `main` that touches `sing-box/` runs the regression gate first:
 full-tag build → self-check that the built binary advertises the `easytier`
-outbound → `go vet` → unit tests for the flag defaults above.
+outbound → `go vet` → unit tests for the flag defaults above and for the
+`config_toml` conflict guard.
 
 Signing keys are **not** stored as repository secrets. They live in the
 environment `sign-gate`, which is gated by a protection rule; the workflow
