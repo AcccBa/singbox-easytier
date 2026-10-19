@@ -40,13 +40,15 @@ single-maintainer project.
   environment `sign-gate` — not as repository-level secrets, never in an
   artifact, never echoed in a log. A job can only read them by declaring that
   environment.
-- Known gap, stated plainly: no required-reviewer gate is currently enabled on
-  `sign-gate` (verified behaviourally — signed runs proceed without waiting).
-  So anyone able to dispatch `release.yml` can get a build signed, though not
-  able to read the key, and the fingerprint guard still constrains what may be
-  published. `release.yml` is `workflow_dispatch`-only, which on a public
-  repository means write access is required. Enabling a required reviewer on the
-  environment is the intended next hardening step.
+- Publishing is gated by a human: the `sign-gate` environment has a required
+  reviewer, so the `sign` job halts in `waiting` after a successful build and
+  signs nothing until approved. Verified behaviourally on 2026-10-19 (run
+  39328721639: build success → sign `waiting` → approved → publish success).
+  Note what this gate does and does not mean: it stops an unattended dispatch
+  from producing a signed artifact, but the reviewer is the repository owner and
+  self-review is permitted, so it is a "second moment of attention", not a
+  second person. `release.yml` is `workflow_dispatch`-only, which on a public
+  repository already requires write access.
 - The signing job fails closed if any secret is missing, if the base64 payload
   does not decode to a plausible keystore, or if the resulting APK's certificate
   fingerprint differs from the one documented in the README.

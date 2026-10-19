@@ -108,7 +108,19 @@ version code before assuming an older APK is installable.
 | push touching `sing-box/**` | `regression.yml` | full-tag build, binary advertises the `easytier` outbound, `go vet`, unit tests (flag defaults, `config_toml` conflict guard) |
 | push touching `sfa/**` | `apk.yml` | aar builds and the client compiles into an unsigned release APK |
 | `workflow_dispatch` on `bump-easytier.yml` | itself + the PR's `regression.yml` | dependency bump is coherent and mergeable |
-| `workflow_dispatch` on `release.yml` | build → sign → attest → publish | publishable artifact with provenance |
+| `workflow_dispatch` on `release.yml` | build → **human approval** → sign → attest → publish | publishable artifact with provenance |
+
+`release.yml` stops before signing: the `sign` job waits on the `sign-gate`
+environment's required reviewer. Approve it in the Actions UI, or:
+
+```bash
+EID=$(gh api repos/AcccBa/singbox-easytier/actions/runs/<run_id>/pending_deployments --jq '.[0].environment.id')
+gh api -X POST repos/AcccBa/singbox-easytier/actions/runs/<run_id>/pending_deployments \
+  -F "environment_ids[]=$EID" -f state=approved -f comment="reason"
+```
+
+(The endpoint takes `environment_ids`, not names; a run left unapproved simply
+never signs, and the unsigned artifact is already archived by then.)
 
 ## Tracking decision
 
