@@ -50,6 +50,17 @@ Signing keys are not available to contributors — they live in the `sign-gate`
 environment. Debug builds are the normal workflow; release signing happens in CI
 only, and the workflow refuses to publish if the certificate fingerprint changes.
 
+## Before and after an upstream sync
+
+```bash
+scripts/secret-scan.sh --smoke && scripts/secret-scan.sh --worktree   # quick, pre-push
+scripts/secret-scan.sh                                               # full history, after a subtree pull
+```
+
+A non-zero exit is not automatically a leak — it is a list of things to attribute
+(commit, path, whether it still exists at `HEAD`, whose credential it is). Judge
+each one; document the verdict in `.github/SECURITY.md` if it is kept.
+
 ## Not accepted
 
 - New secrets, tokens, or credentials of any kind, in code, CI variables,

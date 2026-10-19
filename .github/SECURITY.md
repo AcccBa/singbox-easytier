@@ -56,6 +56,27 @@ single-maintainer project.
   key is ever thought to be compromised, the published fingerprint is the way to
   detect it: any APK not matching it is not ours.
 
+## Findings inherited from upstream history
+
+Because `sing-box/` and `sfa/` are `git subtree` merges, upstream history is part
+of this repository, and secret scanning scans history — so alerts can point at
+content we never wrote and do not currently ship. Every hit found here was
+checked for whether it exists at `HEAD`; all three do not:
+
+| Pattern hit | Location in history | Verdict |
+|---|---|---|
+| Google API key (`AIzaSy…`) | `app/google-services.json` (Firebase config of the upstream SFA app; removed upstream in commit `56a27728 "Remove google services"`) | Upstream's own project key, absent from this tree for a long time. Android API keys of this kind are embedded in shipped APKs by design and rely on package/referrer restrictions, not secrecy. We cannot rotate a key that is not ours, and rewriting ~3.4k imported commits to erase the blob would destroy the subtree relationship and make future `subtree pull` impossible — so the alert is resolved as not-a-secret here, with this note as the audit trail. |
+| PEM private key | `test/config/example.org-key.pem` | Upstream unit-test fixture for a synthetic `example.org` certificate; absent at `HEAD`. |
+| Long `api_key = "…"` literal | `docs/configuration/service/ccm.md{,.zh}` | Upstream documentation example; absent at `HEAD`. |
+
+To re-check after any upstream sync:
+
+```bash
+scripts/secret-scan.sh --smoke      # first: prove the scanner itself works (both directions)
+scripts/secret-scan.sh --worktree   # seconds; what we are actually shipping
+scripts/secret-scan.sh              # full history blob scan; exits non-zero on hits
+```
+
 ## Publishing hygiene
 
 Code, comments, commit messages and release notes must not contain deployment
