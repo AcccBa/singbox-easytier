@@ -73,8 +73,12 @@ jobs:
           # 粘贴事故最常见：带进空格/提示符/被截断。这里先验，别等到签名步才炸。
           SAN=$(printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n\t')
           if ! printf '%s' "$SAN" | base64 -d > /tmp/ks-probe 2>/dev/null; then
-            echo "FATAL: KEYSTORE_B64 不是合法 base64（粘贴时多半带进了空格/提示符残留，或被截断）"
-            echo "       重新生成并在网页覆盖： base64 -w0 ~/opt/keystores/easytier-sfa.keystore"
+            echo "FATAL: KEYSTORE_B64 不是合法 base64（剔除空白后仍有非法字符）"
+            # 只报结构事实，绝不打印任何内容片段：长度 + 非法字符的码点（hex）
+            echo "       长度=${#SAN}（2716 字节的 keystore 经 base64 -w0 应为 3624）"
+            BAD=$(printf '%s' "$SAN" | tr -d 'A-Za-z0-9+/' | head -c 24 | od -An -tx1 | tr -s ' ' | tr -d ' \n')
+            echo "       非法字符（hex，最多 24 字节）=${BAD:-无}  # 例：e280a6=省略号，3c2e2e3e=<...>，3e2f3e=>/"
+            echo "       做法：把 base64 写进文件后从文件整段复制，别从聊天或终端回显里选（会被中间省略）"
             exit 1
           fi
           SZ=$(stat -c%s /tmp/ks-probe)
@@ -84,7 +88,7 @@ jobs:
           if [ "$SZ" -lt 1000 ]; then echo "FATAL: 解出的 keystore 过小（$SZ B），必定是截断"; exit 1; fi
           case "$MAGIC" in
             feed*|30*) : ;;
-            *) echo "FATAL: 头部不是 keystore 特征（feed…/30…），贴错内容了"; exit 1 ;;
+            *) echo "FATAL: 头部不是 keystore 特征（feed…=JKS / 30…=PKCS12），贴错内容了"; exit 1 ;;
           esac
           echo "secret 齐备且 keystore 形态正确（未打印任何值）"
 
