@@ -1,0 +1,98 @@
+name: apk
+
+# 端到端出「未签名 release APK」：拉 sing-box fork -> 构 libbox.aar -> 放进 app/libs -> gradle。
+# 签名不进 CI：不传 LOCAL_PROPERTIES，app/build.gradle.kts 里已改成「无 KEYSTORE_PASS 就不配签名」。
+# 本地用 ~/lab/singbox-easytier-l2/sign-local.sh 以真 key 签名（同 key => 覆盖安装免卸载）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      singbox_ref:
+        description: "sing-box fork 的分支 / ref"
+        default: feat/easytier-r1t
+      platform:
+        description: "gomobile platform"
+        default: android/arm64
+  # 让 release.yml 能复用同一条构建链（同一次 run 内 build -> sign，
+  # 免去跨 run 取产物的 token 语义坑，且 SLSA 证明能覆盖整条链）
+  workflow_call:
+    inputs:
+      singbox_ref:
+        type: string
+        default: feat/easytier-r1t
+      platform:
+        type: string
+        default: android/arm64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unsigned-apk:
+    runs-on: ubuntu-latest
+    env:
+      PLATFORM: ${{ inputs.platform || 'android/arm64' }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.2"
+          cache: true
+
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+        with:
+          packages: "platform-tools build-tools;37.0.0 platforms;android-36 ndk;28.0.13004108"
+
+      - name: 拉取 sing-box fork
+        # 该仓已公开，无需跨仓凭据（B 仓仍保持 private）。若日后改回 private，
+        # 用仓库级**只读** deploy key 存成 secret 并在下面加回 ssh-key。
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: AcccBa/easytier-sing-box
+          ref: ${{ inputs.singbox_ref || 'feat/easytier-r1t' }}
+          path: singbox
+
+      - name: 构建 libbox.aar 并放进 app/libs
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.12
+          go install github.com/sagernet/gomobile/cmd/gobind@v0.1.12
+          export ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/28.0.* | head -1)"
+          echo "NDK=$ANDROID_NDK_HOME"
+          ( cd singbox && go run ./cmd/internal/build_libbox -target android -platform "$PLATFORM" )
+          mkdir -p app/libs
+          cp singbox/libbox.aar singbox/libbox-legacy.aar app/libs/
+          ls -la app/libs/
+
+      - name: gradle 出未签名 release
+        # 内存上限必须显式给：runner 只有 7GB，不设限会被 OOM 杀掉（实测 exit 143，死在 lintVital）
+        run: |
+          ./gradlew --no-daemon --max-workers=2 \
+            -Dorg.gradle.jvmargs="-Xmx2500m -XX:MaxMetaspaceSize=768m" \
+            -Dkotlin.daemon.jvm.options="-Xmx1024m" \
+            :app:assembleOtherRelease \
+            -x lintVitalAnalyzeOtherRelease -x lintVitalReportOtherRelease -x lintVitalOtherRelease
+
+      - name: 回读产物（防 gradle UP-TO-DATE 打旧包：必须看到本次时间与 sha256）
+        run: |
+          find app/build/outputs/apk/other/release -name '*.apk' -exec ls -la {} \;
+          find app/build/outputs/apk/other/release -name '*.apk' -exec sha256sum {} \; | tee apk-sha256.txt
+          test -s apk-sha256.txt
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: SFA-unsigned
+          path: |
+            app/build/outputs/apk/other/release/*.apk
+            apk-sha256.txt
+          if-no-files-found: error
