@@ -1,0 +1,45 @@
+singbox-easytier — attribution and license notice
+=================================================
+
+This repository contains, in two subdirectories, modified copies of two
+upstream works. Each keeps its own license text in place:
+
+  sing-box/LICENSE   GNU General Public License v3.0 or later,
+                     Copyright (C) 2022 nekohasekai <contact-sagernet@sekai.icu>
+  sfa/LICENSE        identical text, same copyright holder
+
+Upstream projects:
+
+  sing-box core : https://github.com/reF1nd/sing-box            (branch reF1nd-testing)
+  SFA (Android) : https://github.com/reF1nd/sing-box-for-android (branch dev)
+  EasyTier      : https://github.com/EasyTier/easytier
+                  consumed as the Go module `easytier-go`, pinned in sing-box/go.mod;
+                  the prebuilt WebAssembly core ships inside that module.
+
+Additional condition inherited from upstream
+--------------------------------------------
+
+Both LICENSE files carry this additional condition, which we honour:
+
+  "In addition, no derivative work may use the name or imply association
+   with this application without prior consent."
+
+Accordingly, everything published from this repository is labelled an
+unofficial third-party build. It is not affiliated with, endorsed by, or
+maintained by the sing-box, SFA, reF1nd or EasyTier projects, and no
+association with them is implied.
+
+Source availability (GPLv3 correspondence)
+-----------------------------------------
+
+Modified APKs published in GitHub Releases are accompanied by their complete
+corresponding source in this same repository, at the exact commit tagged for
+each release:
+
+  sing-box/  the modified core (built with build tag `with_easytier`)
+  sfa/       the modified Android client
+  .github/workflows/release.yml   the exact build recipe used for the artifact
+
+No further restriction is imposed on the upstream code beyond the additional
+condition quoted above. Files written for this repository (workflows, scripts,
+documentation) are offered under the same GPL-3.0-or-later terms.
