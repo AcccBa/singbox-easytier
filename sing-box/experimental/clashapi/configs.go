@@ -1,0 +1,79 @@
+package clashapi
+
+import (
+	"net/http"
+
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing/service"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/render"
+)
+
+func configRouter(server *Server, logFactory log.Factory) http.Handler {
+	r := chi.NewRouter()
+	r.Get("/", getConfigs(server, logFactory))
+	// Like mihomo in embed mode, PUT is not allowed if reloading is not supported.
+	if server.configChecker() != nil {
+		r.Put("/", reload(server))
+	}
+	r.Patch("/", patchConfigs(server))
+	return r
+}
+
+func (s *Server) configChecker() adapter.ConfigChecker {
+	return service.FromContext[adapter.ConfigChecker](s.ctx)
+}
+
+type configSchema struct {
+	Port        int    `json:"port"`
+	SocksPort   int    `json:"socks-port"`
+	RedirPort   int    `json:"redir-port"`
+	TProxyPort  int    `json:"tproxy-port"`
+	MixedPort   int    `json:"mixed-port"`
+	AllowLan    bool   `json:"allow-lan"`
+	BindAddress string `json:"bind-address"`
+	Mode        string `json:"mode"`
+	// sing-box added
+	ModeList []string       `json:"mode-list"`
+	Modes    []string       `json:"modes"`
+	LogLevel string         `json:"log-level"`
+	IPv6     bool           `json:"ipv6"`
+	Tun      map[string]any `json:"tun"`
+}
+
+func getConfigs(server *Server, logFactory log.Factory) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		logLevel := logFactory.Level()
+		if logLevel == log.LevelTrace {
+			logLevel = log.LevelDebug
+		} else if logLevel < log.LevelError {
+			logLevel = log.LevelError
+		}
+		render.JSON(w, r, &configSchema{
+			Mode:        server.clashMode.Mode(),
+			ModeList:    server.clashMode.ModeList(),
+			Modes:       server.clashMode.ModeList(),
+			AllowLan:    true,
+			BindAddress: "*",
+			LogLevel:    log.FormatLevel(logLevel),
+		})
+	}
+}
+
+func patchConfigs(server *Server) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var newConfig configSchema
+		err := render.DecodeJSON(r.Body, &newConfig)
+		if err != nil {
+			render.Status(r, http.StatusBadRequest)
+			render.JSON(w, r, ErrBadRequest)
+			return
+		}
+		if newConfig.Mode != "" {
+			server.clashMode.SetMode(newConfig.Mode)
+		}
+		render.NoContent(w, r)
+	}
+}
