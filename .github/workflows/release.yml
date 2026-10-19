@@ -4,7 +4,7 @@ name: release
 # 一次 run 内：构建（复用 apk.yml，该 job 读不到密钥）-> 签名（密钥只在 environment: sign-gate 可见）
 # -> 证书指纹强制校验 -> SLSA 证明 -> 发布 prerelease。
 # 信任边界：密钥只挂 environment；签名后证书 SHA-256 必须等于手机已信任指纹，不符即拒发；
-# 只由人手动 dispatch；发布哈希另记在 CI 无写权限的仓（home-mesh 文档）。
+# 只由人手动 dispatch；发布哈希另有一处 CI 无写权限的独立记录，用于交叉核对。
 
 on:
   workflow_dispatch:

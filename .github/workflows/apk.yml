@@ -2,7 +2,7 @@ name: apk
 
 # 所有 action 钉**完整 commit SHA**（防第三方换版本标签投毒）。SHA 于 2026-10-19 由 tag 解引用取得。
 # 端到端出「未签名 release APK」：sing-box/ 构 libbox.aar -> 放进 sfa/app/libs -> gradle。
-# 单仓之后**不再跨仓 checkout**（原先要拉 AcccBa/easytier-sing-box，现在是本地目录）。
+# 单仓之后不再跨仓 checkout：aar 由本仓 sing-box/ 目录就地构建。
 # 本工作流不持密钥：不传 LOCAL_PROPERTIES，build.gradle.kts 里「无 KEYSTORE_PASS 就不配签名」。
 
 on:
