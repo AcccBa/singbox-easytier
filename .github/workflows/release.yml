@@ -76,7 +76,8 @@ jobs:
             echo "FATAL: KEYSTORE_B64 不是合法 base64（剔除空白后仍有非法字符）"
             # 只报结构事实，绝不打印任何内容片段：长度 + 非法字符的码点（hex）
             echo "       长度=${#SAN}（2716 字节的 keystore 经 base64 -w0 应为 3624）"
-            BAD=$(printf '%s' "$SAN" | tr -d 'A-Za-z0-9+/' | head -c 24 | od -An -tx1 | tr -s ' ' | tr -d ' \n')
+            # 白名单必须含 '='（base64 填充符是合法字符），否则会把结尾 == 误报成非法字符
+            BAD=$(printf '%s' "$SAN" | tr -d 'A-Za-z0-9+/=' | head -c 24 | od -An -tx1 | tr -s ' ' | tr -d ' \n')
             echo "       非法字符（hex，最多 24 字节）=${BAD:-无}  # 例：e280a6=省略号，3c2e2e3e=<...>，3e2f3e=>/"
             echo "       做法：把 base64 写进文件后从文件整段复制，别从聊天或终端回显里选（会被中间省略）"
             exit 1
