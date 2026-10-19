@@ -37,8 +37,16 @@ single-maintainer project.
 ## How signing credentials are handled here
 
 - The keystore and its passphrases exist only as secrets in the GitHub Actions
-  environment `sign-gate`, which is behind a protection rule. They are not
-  repository-level secrets, not in any artifact, and not echoed in logs.
+  environment `sign-gate` — not as repository-level secrets, never in an
+  artifact, never echoed in a log. A job can only read them by declaring that
+  environment.
+- Known gap, stated plainly: no required-reviewer gate is currently enabled on
+  `sign-gate` (verified behaviourally — signed runs proceed without waiting).
+  So anyone able to dispatch `release.yml` can get a build signed, though not
+  able to read the key, and the fingerprint guard still constrains what may be
+  published. `release.yml` is `workflow_dispatch`-only, which on a public
+  repository means write access is required. Enabling a required reviewer on the
+  environment is the intended next hardening step.
 - The signing job fails closed if any secret is missing, if the base64 payload
   does not decode to a plausible keystore, or if the resulting APK's certificate
   fingerprint differs from the one documented in the README.
