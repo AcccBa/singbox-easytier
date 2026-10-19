@@ -1,0 +1,124 @@
+name: bump-easytier
+
+# ② EasyTier 是依赖（sing-box/go.mod 里的 easytier-go），不是本仓源码。
+# bump 需要 go get + go mod tidy 重算 go.sum，而维护机已无 Go 工具链 —— 所以在这里做。
+# 只开 PR，绝不直推 main；PR 不会因为本 job 的 token 自动跑 workflow（GitHub 防递归），
+# 所以最后一步显式在该分支上 dispatch regression，把回归门变成 PR 的验收。
+# action 一律钉完整 commit SHA（与其余工作流同一策略）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "EasyTier commit SHA / tag，留 latest 表示上游 HEAD"
+        default: "latest"
+
+permissions:
+  contents: write        # 推 bump 分支
+  pull-requests: write   # 开 PR
+
+concurrency:
+  group: bump-easytier
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      MODULE: github.com/easytier/easytier/easytier-go
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.27.2"
+          cache: true
+          cache-dependency-path: sing-box/go.sum
+
+      - name: 解析目标 commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_IN: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          T="$TARGET_IN"
+          if [ -z "$T" ] || [ "$T" = "latest" ]; then
+            T=$(gh api "repos/EasyTier/easytier/commits?per_page=1" --jq '.[0].sha')
+            echo "latest -> $T"
+          fi
+          # 允许传 tag 或 sha，故只校验非空
+          [ -n "$T" ] || { echo "FATAL: 目标版本解析为空"; exit 1; }
+          echo "ET_TARGET=$T" >> "$GITHUB_ENV"
+
+      - name: 记录 bump 前的 pin
+        run: |
+          set -euo pipefail
+          grep -m1 -oE "${MODULE} v[^ ]+" sing-box/go.mod | tee /tmp/pin_before
+          test -s /tmp/pin_before || { echo "FATAL: go.mod 里找不到 ${MODULE}"; exit 1; }
+
+      - name: go get + tidy + verify
+        working-directory: sing-box
+        run: |
+          set -euo pipefail
+          go get "${MODULE}@${ET_TARGET}"
+          go mod tidy
+          go mod verify
+          echo "--- go.mod 变更（最多 20 行）---"
+          git --no-pager diff -- go.mod | sed -n '1,20p' || true
+
+      - name: 确认内嵌 wasm 内核随模块在位（这是不需要 Rust 的原因）
+        run: |
+          set -euo pipefail
+          W=$(find "$(go env GOMODCACHE)"/github.com/easytier/easytier/ -path '*easytier-go*/internal/artifact/easytier_core.wasm' | head -1)
+          [ -n "$W" ] || { echo "FATAL: 新模块里没有预编译 wasm 内核 —— bump 后产物会缺核"; exit 1; }
+          ls -l "$W"
+
+      - name: 有变更才开 PR（无变更不产假 PR）
+        id: diff
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- sing-box/go.mod sing-box/go.sum; then
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            echo "已是目标版本，无需 PR"
+          else
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 推分支并开 PR
+        if: steps.diff.outputs.changed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHORT=$(printf '%s' "$ET_TARGET" | cut -c1-10)
+          BRANCH="bump/easytier-${SHORT}"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "FATAL: 远端已存在 $BRANCH，先处理旧 PR 再 bump"; exit 1
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add sing-box/go.mod sing-box/go.sum
+          git commit -s -m "deps(easytier): bump easytier-go to ${ET_TARGET}" -m "由 bump-easytier.yml 生成（run ${GITHUB_RUN_ID}）。go.mod 之前：$(cat /tmp/pin_before)"
+          git push -q origin "$BRANCH"
+          {
+            echo "自动 bump：\`$(cat /tmp/pin_before)\` → \`${MODULE} ${target}\`。"
+            echo
+            echo "- go.sum 由 \`go mod tidy\` 重算，\`go mod verify\` 通过"
+            echo "- 预编译 wasm 内核已确认随模块在位（无需 Rust 工具链）"
+            echo "- 下一步验收：同分支上的 regression 必须绿（本 job 已显式触发；PR 不会自动跑，因为 GITHUB_TOKEN 防递归）"
+            echo "- 合并后仍需人手动 \`release.yml\` 才会出新 APK"
+          } > /tmp/pr.md
+          gh pr create --base main --head "$BRANCH" \
+            --title "deps(easytier): bump to ${SHORT}" --body-file /tmp/pr.md
+          echo "PR 分支：$BRANCH"
+
+      - name: 在该分支上触发回归门（PR 的验收）
+        if: steps.diff.outputs.changed == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          BRANCH="bump/easytier-$(printf '%s' "$ET_TARGET" | cut -c1-10)"
+          timeout 60 gh workflow run regression.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          echo "已触发 regression（ref=$BRANCH）。验收：该 run 绿了才允许合并本 PR。"

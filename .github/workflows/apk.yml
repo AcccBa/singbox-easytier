@@ -11,6 +11,13 @@ on:
       platform:
         description: "gomobile platform"
         default: android/arm64
+  # ① 客户端侧改动的编译门：sfa/** 有 push 就自动跑一次完整构建（aar + gradle）。
+  # 为什么不是 regression.yml：regression 跑的是 go build/vet/test，测不到 Kotlin/Gradle。
+  push:
+    branches: [main]
+    paths:
+      - 'sfa/**'
+      - '.github/workflows/apk.yml'
   workflow_call:
     inputs:
       platform:
