@@ -54,7 +54,8 @@ easytier_report(){
   latest=$(timeout 60 gh api "repos/EasyTier/easytier/commits?per_page=1" --jq '.[0].sha[0:12]' 2>/dev/null)
   say "上游最新 release=${rel:-取不到}；最新 commit=${latest:-取不到}（需代理与 gh 登录）"
   say "要 bump 就改这一行：  ${ET_MOD} v0.0.0-<UTC时间>-<新 commit 前12位>"
-  say "本仓已无本地 Go 工具链 ⇒ bump 要么人工改 go.mod 后交给 CI 验证，要么在容器里跑 go get。"
+  say "本仓已无本地 Go 工具链 ⇒ 必须跑 go get + go mod tidy（容器或 CI job）。"
+  say "  只手改 go.mod 那一行不行：go.sum 缺条目时 CI 也一样构不过（Go 拒绝补算）。详见 docs/UPSTREAM-UPDATE-RUNBOOK.md §C"
   say "注意：预编译内核在 easytier-go/internal/artifact/easytier_core.wasm 里随模块交付，无需 Rust。"
 }
 case "${1:-status}" in

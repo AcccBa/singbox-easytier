@@ -110,6 +110,10 @@ scripts/sync-upstream.sh sfa         # subtree pull, stops on conflict
 scripts/sync-upstream.sh easytier    # reports the pin vs upstream and prints the line to edit
 ```
 
+Step-by-step procedures for each upstream (including how to resolve the
+`version.properties` conflict and why a client-only sync needs an extra compile
+gate) are in [`docs/UPSTREAM-UPDATE-RUNBOOK.md`](docs/UPSTREAM-UPDATE-RUNBOOK.md).
+
 This repository is **not** a GitHub fork: the original fork relationships were
 dissolved by a visibility change (a GitHub-side consequence of private → public,
 not recoverable from the owner's side), so upstream synchronization is explicit
